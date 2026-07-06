@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- SEO 최적화 메타 태그 -->
+  <title>Jikko | 아두이노 & 바이브코딩 개인 포트폴리오</title>
+  <meta name="description" content="아두이노 하드웨어 메이킹과 AI 어시스턴트를 활용한 바이브코딩 프로젝트를 기록하고 전시하는 Jikko의 공식 포트폴리오 웹사이트입니다.">
+  <meta name="author" content="Jikko">
+  
+  <!-- 공통 스타일시트 링크 -->
+  <link rel="stylesheet" href="src/assets/css/style.css">
+  
+  <!-- 추가적인 커스텀 스타일 (푸터 등 세부 레이아웃용) -->
+  <style>
+    /* 푸터 스타일 */
+    .portfolio-footer {
+      background-color: var(--color-surface);
+      border-top: var(--border-thick);
+      padding: 40px 0;
+      text-align: center;
+      margin-top: 80px;
+    }
+    
+    .portfolio-footer p {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--color-text-main);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. 네비게이션 바 루트 (Navbar.js가 동적으로 주입됩니다) -->
+  <div id="navbar-root"></div>
+
+  <main>
+    <!-- 2. 자기소개 프로필 루트 (Profile.js가 동적으로 주입됩니다) -->
+    <div id="profile-root"></div>
+
+    <!-- 3. 작업물(프로젝트) 그리드 섹션 -->
+    <section id="projects" class="projects-section container reveal">
+      <h2 class="section-title">작업물 (Works)</h2>
+      <p class="section-subtitle">아두이노 하드웨어와 AI 코딩으로 제작한 프로젝트들입니다.</p>
+      
+      <!-- 프로젝트 카드가 동적으로 주입될 그리드 컨테이너 -->
+      <div class="works-grid" id="projects-root"></div>
+    </section>
+
+    <!-- 4. 연락처(이메일 폼) 루트 (ContactForm.js가 동적으로 주입됩니다) -->
+    <div id="contact-root"></div>
+  </main>
+
+  <!-- 5. 푸터 영역 -->
+  <footer class="portfolio-footer">
+    <div class="container">
+      <p>&copy; 2026 Jikko. All Rights Reserved. Powered by Arduino & VibeCoding.</p>
+    </div>
+  </footer>
+
+  <!-- 6. 상세 보기 모달 팝업이 렌더링될 루트 -->
+  <div id="modal-root"></div>
+
+  <!-- 7. EmailJS SDK 라이브러리 추가 (이메일 전송 기능용) -->
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
+  <!-- 8. 메인 모듈 진입점 스크립트 연결 -->
+  <script type="module" src="src/main.js?v=2"></script>
+</body>
+</html>
