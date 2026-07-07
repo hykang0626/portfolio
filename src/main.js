@@ -1,10 +1,23 @@
-// 1. ui 폴더의 재사용 컴포넌트 모듈 및 설정 임포트
+// 1. ui 폴더의 재사용 컴포넌트 모듈 임포트
 import { Navbar } from './ui/Navbar.js';
 import { Profile } from './ui/Profile.js';
 import { ProjectCard } from './ui/ProjectCard.js';
 import { ContactForm } from './ui/ContactForm.js';
 import { Modal } from './ui/Modal.js';
-import { SUPABASE_CONFIG, EMAILJS_CONFIG } from './config.js';
+
+// 2. 동적 설정을 위한 모듈 로더 (config.js 누락 시에도 하얀 화면 에러 방지)
+export let SUPABASE_CONFIG = { url: "", anonKey: "" };
+export let EMAILJS_CONFIG = { serviceId: "", templateId: "", publicKey: "" };
+
+async function loadConfig() {
+  try {
+    const config = await import('./config.js?v=' + Date.now());
+    if (config.SUPABASE_CONFIG) SUPABASE_CONFIG = config.SUPABASE_CONFIG;
+    if (config.EMAILJS_CONFIG) EMAILJS_CONFIG = config.EMAILJS_CONFIG;
+  } catch (e) {
+    console.warn("🔐 설정 파일(config.js)을 불러올 수 없어 임시 폴백 모드로 구동합니다.", e);
+  }
+}
 
 // 3. 로컬 테스트 및 Supabase 연결 실패 시 사용할 기본 데이터(폴백 데이터)
 const fallbackProfile = {
@@ -46,6 +59,8 @@ const fallbackProjects = [
 
 // 4. 데이터 로드 및 렌더링 총괄 함수
 async function loadPortfolioData() {
+  await loadConfig(); // 설정 파일 동적 로딩 수행
+  
   // 관리자 대시보드 연동을 위해 로컬 스토리지에 기본 데이터 세팅 및 조회
   if (!localStorage.getItem("profile_data")) {
     localStorage.setItem("profile_data", JSON.stringify(fallbackProfile));

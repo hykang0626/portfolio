@@ -1,8 +1,19 @@
-// 1. 관리자용 컴포넌트 및 설정 임포트
+// 1. 관리자용 컴포넌트 임포트
 import { AdminLogin } from './ui/AdminLogin.js';
 import { AdminDashboard } from './ui/AdminDashboard.js';
 import { AdminProjectModal } from './ui/AdminProjectModal.js';
-import { SUPABASE_CONFIG } from './config.js';
+
+// 2. 동적 설정을 위한 모듈 로더 (config.js 누락 시에도 에러 방지)
+let SUPABASE_CONFIG = { url: "", anonKey: "" };
+
+async function loadConfig() {
+  try {
+    const config = await import('./config.js?v=' + Date.now());
+    if (config.SUPABASE_CONFIG) SUPABASE_CONFIG = config.SUPABASE_CONFIG;
+  } catch (e) {
+    console.warn("🔐 설정 파일(config.js)을 불러올 수 없어 임시 폴백 모드로 구동합니다.", e);
+  }
+}
 
 // 3. Supabase 클라이언트 싱글톤 인스턴스 홀더 및 로더
 let supabase = null;
@@ -73,6 +84,7 @@ function initializeData() {
 
 // 7. 현재 로그인 세션 상태 체크 및 렌더링 분기 (Supabase 실시간 연동 포함)
 async function checkSessionAndRender() {
+  await loadConfig(); // 설정 파일 동적 로딩 수행
   initializeData();
   const isLoggedIn = localStorage.getItem("admin_logged_in") === "true";
   const adminRoot = document.getElementById("admin-root");
