@@ -1,15 +1,10 @@
-// 1. ui 폴더의 재사용 컴포넌트 모듈 임포트
+// 1. ui 폴더의 재사용 컴포넌트 모듈 및 설정 임포트
 import { Navbar } from './ui/Navbar.js';
 import { Profile } from './ui/Profile.js';
 import { ProjectCard } from './ui/ProjectCard.js';
 import { ContactForm } from './ui/ContactForm.js';
 import { Modal } from './ui/Modal.js';
-
-// 2. Supabase 연동 설정 (기본값은 빈값이며, 작성 시 자동 활성화됨)
-const SUPABASE_CONFIG = {
-  url: "",       // Supabase 프로젝트 URL (예: https://xxxx.supabase.co)
-  anonKey: ""    // Supabase anon public key
-};
+import { SUPABASE_CONFIG, EMAILJS_CONFIG } from './config.js';
 
 // 3. 로컬 테스트 및 Supabase 연결 실패 시 사용할 기본 데이터(폴백 데이터)
 const fallbackProfile = {
@@ -162,17 +157,32 @@ function initContactForm() {
   const contactRoot = document.getElementById("contact-root");
   contactRoot.innerHTML = ContactForm();
 
-  // EmailJS 설정 변수 (추후 사용자가 설정할 수 있도록 안내)
-  const EMAILJS_CONFIG = {
-    publicKey: "",    // EmailJS Public Key 입력란
-    serviceId: "",    // EmailJS Service ID 입력란
-    templateId: ""    // EmailJS Template ID 입력란
-  };
-
   const contactForm = document.getElementById("portfolio-contact-form");
   if (contactForm) {
     contactForm.addEventListener("submit", (e) => {
       e.preventDefault();
+
+      const formData = new FormData(contactForm);
+
+      // [1] 스팸방지 - 허니팟 필드 검증 (봇 감지 시 발송 차단하되, 성공한 것처럼 UI 속여서 차단)
+      const honeypot = formData.get("honey_trap");
+      if (honeypot) {
+        console.warn("🤖 스팸 봇 활동 감지! 발송을 차단합니다.");
+        setTimeout(() => {
+          alert("📬 메시지가 성공적으로 발송되었습니다! 확인 후 회신드리겠습니다.");
+          contactForm.reset();
+        }, 800);
+        return;
+      }
+
+      // [2] 스팸방지 - 1분 내 연속 전송 도배 방지 (Rate Limit 60초)
+      const lastSent = localStorage.getItem("last_email_sent_time");
+      const now = Date.now();
+      if (lastSent && (now - parseInt(lastSent) < 60000)) {
+        const remaining = Math.ceil((60000 - (now - parseInt(lastSent))) / 1000);
+        alert(`⚠️ 도배 방지를 위해 잠시 대기해 주세요. ${remaining}초 후에 다시 전송할 수 있습니다.`);
+        return;
+      }
 
       // 전송 버튼 비활성화 및 처리 상태 텍스트 노출
       const submitBtn = contactForm.querySelector('button[type="submit"]');
@@ -185,10 +195,12 @@ function initContactForm() {
         // EmailJS 라이브러리 초기화
         emailjs.init(EMAILJS_CONFIG.publicKey);
 
-        // 이메일 발송 API 호출
-        emailjs.sendForm(EMAILJS_CONFIG.serviceId, EMAILJS_CONFIG.templateId, contactForm)
+        // 이메일 발송 API 호출 (네 번째 인자로 publicKey 명시 전달)
+        emailjs.sendForm(EMAILJS_CONFIG.serviceId, EMAILJS_CONFIG.templateId, contactForm, EMAILJS_CONFIG.publicKey)
           .then(() => {
             alert("📬 메시지가 성공적으로 발송되었습니다! 확인 후 회신드리겠습니다.");
+            // 성공 시 마지막 전송 시간 저장
+            localStorage.setItem("last_email_sent_time", Date.now().toString());
             contactForm.reset();
           })
           .catch((error) => {
@@ -202,8 +214,7 @@ function initContactForm() {
       } else {
         // 설정이 없는 경우 초보자를 위한 상세 동작 모의(Mock) 및 학습용 안내창 노출
         setTimeout(() => {
-          const formData = new FormData(contactForm);
-          alert(`📬 [이메일 전송 테스트 완료]\n\n보낸 분: ${formData.get("user_name")} (${formData.get("user_email")})\n제목: ${formData.get("subject")}\n내용: ${formData.get("message")}\n\n💡 [안내] 실 서비스 작동을 원하시면 'main.js' 파일 상단의 'EMAILJS_CONFIG'에 키 값을 등록해 주세요!`);
+          alert(`📬 [이메일 전송 테스트 완료]\n\n보낸 분: ${formData.get("name")} (${formData.get("email")})\n제목: ${formData.get("title")}\n내용: ${formData.get("message")}\n\n💡 [안내] 실 서비스 작동을 원하시면 'src/config.js' 파일의 'EMAILJS_CONFIG'에 키 값을 등록해 주세요!`);
           contactForm.reset();
           submitBtn.innerText = originalText;
           submitBtn.disabled = false;

@@ -1,12 +1,29 @@
-// 1. 관리자용 컴포넌트 임포트
+// 1. 관리자용 컴포넌트 및 설정 임포트
 import { AdminLogin } from './ui/AdminLogin.js';
 import { AdminDashboard } from './ui/AdminDashboard.js';
 import { AdminProjectModal } from './ui/AdminProjectModal.js';
+import { SUPABASE_CONFIG } from './config.js';
 
-// 2. 관리자 비밀번호 상수 정의 (테스트 편의성을 위해 1234로 지정)
+// 3. Supabase 클라이언트 싱글톤 인스턴스 홀더 및 로더
+let supabase = null;
+async function getSupabaseClient() {
+  if (supabase) return supabase;
+  if (SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey) {
+    try {
+      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+      supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+      return supabase;
+    } catch (e) {
+      console.error("Supabase 라이브러리 로드 중 에러 발생:", e);
+    }
+  }
+  return null;
+}
+
+// 4. 관리자 비밀번호 상수 정의 (테스트용: 1234)
 const ADMIN_PASSWORD = "1234";
 
-// 3. 로컬 스토리지에 데이터가 없을 경우 사용할 초기 뼈대 데이터
+// 5. 데이터가 없을 경우 사용할 초기 로컬 스토리지 뼈대 데이터
 const defaultProfile = {
   name: "Jikko",
   interests: ["아두이노 (Arduino)", "바이브코딩 (AI Coding)"],
@@ -44,7 +61,7 @@ const defaultProjects = [
   }
 ];
 
-// 4. 데이터 초기화 함수 (로컬스토리지 확인용)
+// 6. 데이터 초기화 함수 (로컬스토리지 확인용)
 function initializeData() {
   if (!localStorage.getItem("profile_data")) {
     localStorage.setItem("profile_data", JSON.stringify(defaultProfile));
@@ -54,22 +71,53 @@ function initializeData() {
   }
 }
 
-// 5. 현재 로그인 세션 상태 체크 및 렌더링 분기
-function checkSessionAndRender() {
+// 7. 현재 로그인 세션 상태 체크 및 렌더링 분기 (Supabase 실시간 연동 포함)
+async function checkSessionAndRender() {
   initializeData();
   const isLoggedIn = localStorage.getItem("admin_logged_in") === "true";
   const adminRoot = document.getElementById("admin-root");
 
   if (isLoggedIn) {
-    // 5.1 로그인 성공 시 대시보드 주입
-    const profile = JSON.parse(localStorage.getItem("profile_data"));
-    const projects = JSON.parse(localStorage.getItem("projects_data"));
+    let profile = JSON.parse(localStorage.getItem("profile_data"));
+    let projects = JSON.parse(localStorage.getItem("projects_data"));
+
+    // Supabase 연동 시도 및 최신 데이터베이스 동기화
+    const db = await getSupabaseClient();
+    if (db) {
+      try {
+        // 프로필 정보 실시간 로드
+        const { data: profileData, error: profileError } = await db
+          .from('profile')
+          .select('*')
+          .single();
+        
+        if (!profileError && profileData) {
+          profile = profileData;
+          localStorage.setItem("profile_data", JSON.stringify(profile));
+        }
+
+        // 프로젝트 리스트 실시간 로드
+        const { data: projectsData, error: projectsError } = await db
+          .from('projects')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (!projectsError && projectsData) {
+          projects = projectsData;
+          localStorage.setItem("projects_data", JSON.stringify(projects));
+        }
+      } catch (e) {
+        console.warn("Supabase 실시간 데이터베이스 연동에 실패하여 로컬 스토리지 데이터로 대체합니다.", e);
+      }
+    }
+
+    // 7.1 로그인 성공 시 대시보드 컴포넌트 주입
     adminRoot.innerHTML = AdminDashboard(profile, projects);
     
     // 대시보드 리스너들 바인딩
     bindDashboardEvents();
   } else {
-    // 5.2 로그인 전에는 로그인 폼 주입
+    // 7.2 로그인 전에는 로그인 폼 주입
     adminRoot.innerHTML = AdminLogin();
     
     // 로그인 폼 리스너 바인딩
@@ -80,7 +128,7 @@ function checkSessionAndRender() {
   initScrollAnimation();
 }
 
-// 6. 로그인 폼 이벤트 바인딩
+// 8. 로그인 폼 이벤트 바인딩
 function bindLoginEvents() {
   const form = document.getElementById("admin-login-form");
   if (form) {
@@ -99,9 +147,9 @@ function bindLoginEvents() {
   }
 }
 
-// 7. 대시보드 버튼 및 폼 이벤트 바인딩
+// 9. 대시보드 버튼 및 폼 이벤트 바인딩
 function bindDashboardEvents() {
-  // 7.1 로그아웃 처리
+  // 9.1 로그아웃 처리
   const logoutBtn = document.getElementById("btn-logout");
   if (logoutBtn) {
     logoutBtn.addEventListener("click", () => {
@@ -111,10 +159,10 @@ function bindDashboardEvents() {
     });
   }
 
-  // 7.2 프로필 편집 저장 처리
+  // 9.2 프로필 편집 저장 처리 (Supabase DB & 로컬스토리지 동시 갱신)
   const profileForm = document.getElementById("dashboard-profile-form");
   if (profileForm) {
-    profileForm.addEventListener("submit", (e) => {
+    profileForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const formData = new FormData(profileForm);
       
@@ -125,13 +173,27 @@ function bindDashboardEvents() {
         skills: formData.get("skills").split('\n').map(item => item.trim()).filter(Boolean)
       };
 
+      // 1) 로컬 저장
       localStorage.setItem("profile_data", JSON.stringify(updatedProfile));
+
+      // 2) Supabase DB 저장
+      const db = await getSupabaseClient();
+      if (db) {
+        try {
+          const { error } = await db.from('profile').update(updatedProfile).eq('id', 1);
+          if (error) throw error;
+        } catch (err) {
+          console.error("Supabase 프로필 동기화 중 에러:", err);
+          alert("⚠️ 로컬에는 저장되었으나, Supabase DB 저장 중 오류가 발생했습니다.");
+        }
+      }
+
       alert("💾 프로필 정보가 성공적으로 저장되었습니다!");
       checkSessionAndRender();
     });
   }
 
-  // 7.3 프로젝트 추가 버튼 연동
+  // 9.3 프로젝트 추가 버튼 연동
   const addProjectBtn = document.getElementById("btn-add-project");
   if (addProjectBtn) {
     addProjectBtn.addEventListener("click", () => {
@@ -139,7 +201,7 @@ function bindDashboardEvents() {
     });
   }
 
-  // 7.4 프로젝트 수정 및 삭제 버튼 위임 처리
+  // 9.4 프로젝트 수정 및 삭제 버튼 위임 처리
   const tableBody = document.getElementById("projects-table-body");
   if (tableBody) {
     tableBody.addEventListener("click", (e) => {
@@ -149,7 +211,7 @@ function bindDashboardEvents() {
       if (editBtn) {
         const projectId = parseInt(editBtn.getAttribute("data-id"));
         const projects = JSON.parse(localStorage.getItem("projects_data"));
-        const project = projects.find(p => p.id === projectId);
+        const project = projects.find(p => Number(p.id) === Number(projectId));
         openProjectModal(project); // 수정 모드
       } else if (deleteBtn) {
         const projectId = parseInt(deleteBtn.getAttribute("data-id"));
@@ -161,7 +223,7 @@ function bindDashboardEvents() {
   }
 }
 
-// 8. 프로젝트 추가/수정용 모달 제어
+// 10. 프로젝트 추가/수정용 모달 제어
 function openProjectModal(project = null) {
   const modalRoot = document.getElementById("admin-modal-root");
   modalRoot.innerHTML = AdminProjectModal(project);
@@ -206,14 +268,14 @@ function closeProjectModal() {
   }
 }
 
-// 9. 프로젝트 데이터 저장 (추가 및 수정 통합)
-function saveProjectData(formData) {
+// 11. 프로젝트 데이터 저장 (추가 및 수정 통합 - Supabase DB & 로컬스토리지 동시 갱신)
+async function saveProjectData(formData) {
   const idVal = formData.get("id");
   const isEdit = idVal !== "";
   const projects = JSON.parse(localStorage.getItem("projects_data")) || [];
 
   const projectObj = {
-    id: isEdit ? parseInt(idVal) : Date.now(), // 고유 숫자형 ID 부여
+    id: isEdit ? parseInt(idVal) : Date.now(),
     title: formData.get("title"),
     summary: formData.get("summary"),
     tags: formData.get("tags").split(',').map(t => t.trim()).filter(Boolean),
@@ -224,39 +286,80 @@ function saveProjectData(formData) {
     description: formData.get("description")
   };
 
+  // 1) Supabase DB 저장 및 동기화
+  const db = await getSupabaseClient();
+  if (db) {
+    try {
+      const dbPayload = {
+        title: projectObj.title,
+        summary: projectObj.summary,
+        tags: projectObj.tags,
+        image_url: projectObj.image_url,
+        video_url: projectObj.video_url,
+        link_github: projectObj.link_github,
+        link_demo: projectObj.link_demo,
+        description: projectObj.description
+      };
+
+      if (isEdit) {
+        const { error } = await db.from('projects').update(dbPayload).eq('id', projectObj.id);
+        if (error) throw error;
+      } else {
+        const { error } = await db.from('projects').insert(dbPayload);
+        if (error) throw error;
+      }
+    } catch (err) {
+      console.error("Supabase 프로젝트 저장 오류:", err);
+      alert("⚠️ 로컬에는 임시 저장되지만 Supabase DB 연동 중 에러가 발생했습니다. 테이블이 올바르게 구성되어 있는지 확인해주세요.");
+    }
+  }
+
+  // 2) 로컬스토리지 임시 동기화
   if (isEdit) {
-    // 수정 처리
-    const idx = projects.findIndex(p => p.id === projectObj.id);
+    const idx = projects.findIndex(p => Number(p.id) === Number(projectObj.id));
     if (idx !== -1) {
       projects[idx] = projectObj;
     }
   } else {
-    // 신규 추가 (가장 최신 글이 맨 앞에 가도록 unshift)
     projects.unshift(projectObj);
   }
-
   localStorage.setItem("projects_data", JSON.stringify(projects));
+
   alert(isEdit ? "💾 프로젝트가 성공적으로 수정되었습니다." : "💾 새 프로젝트가 등록되었습니다.");
   closeProjectModal();
   checkSessionAndRender();
 }
 
-// 10. 프로젝트 삭제
-function deleteProject(id) {
+// 12. 프로젝트 삭제 (Supabase DB & 로컬스토리지 동시 갱신)
+async function deleteProject(id) {
+  // 1) Supabase DB 삭제 수행
+  const db = await getSupabaseClient();
+  if (db) {
+    try {
+      const { error } = await db.from('projects').delete().eq('id', id);
+      if (error) throw error;
+    } catch (err) {
+      console.error("Supabase 프로젝트 삭제 오류:", err);
+      alert("⚠️ 로컬에서는 임시 삭제되었으나 Supabase DB에서 삭제 중 에러가 발생했습니다.");
+    }
+  }
+
+  // 2) 로컬스토리지 갱신
   const projects = JSON.parse(localStorage.getItem("projects_data")) || [];
   const filtered = projects.filter(p => Number(p.id) !== Number(id));
   localStorage.setItem("projects_data", JSON.stringify(filtered));
+
   alert("🗑️ 작업물이 성공적으로 삭제되었습니다.");
   checkSessionAndRender();
 }
 
-// 11. 스크롤 애니메이션 초기화 (대시보드 노출 시 부드럽게 등장하도록 지원)
+// 13. 스크롤 애니메이션 초기화 (관리자 모드에서는 대기 없이 바로 활성화 처리)
 function initScrollAnimation() {
   const reveals = document.querySelectorAll(".reveal");
-  reveals.forEach(el => el.classList.add("active")); // 관리자 모드에서는 대기 없이 바로 활성화 처리
+  reveals.forEach(el => el.classList.add("active"));
 }
 
-// 12. 최초 진입 실행
+// 14. 최초 진입 실행
 document.addEventListener("DOMContentLoaded", () => {
   checkSessionAndRender();
 });
